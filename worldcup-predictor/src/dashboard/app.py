@@ -30,6 +30,44 @@ TEAM_NAME_ZH = {
     "United States": "美国",
 }
 
+PLAYER_NAME_ZH = {
+    "Lionel Messi": "利昂内尔·梅西",
+    "Julian Alvarez": "胡利安·阿尔瓦雷斯",
+    "Kylian Mbappe": "基利安·姆巴佩",
+    "Antoine Griezmann": "安托万·格列兹曼",
+    "Harry Kane": "哈里·凯恩",
+    "Jude Bellingham": "裘德·贝林厄姆",
+    "Lamine Yamal": "拉明·亚马尔",
+    "Pedri": "佩德里",
+    "Florian Wirtz": "弗洛里安·维尔茨",
+    "Jamal Musiala": "贾马尔·穆西亚拉",
+    "Vinicius Junior": "维尼修斯",
+    "Rodrygo": "罗德里戈",
+    "Bruno Fernandes": "布鲁诺·费尔南德斯",
+    "Bernardo Silva": "贝尔纳多·席尔瓦",
+    "Virgil van Dijk": "维吉尔·范戴克",
+    "Xavi Simons": "哈维·西蒙斯",
+    "Takefusa Kubo": "久保建英",
+    "Kaoru Mitoma": "三笘薰",
+    "Christian Pulisic": "克里斯蒂安·普利西奇",
+    "Tyler Adams": "泰勒·亚当斯",
+}
+
+POSITION_ZH = {
+    "FW": "前锋",
+    "MF": "中场",
+    "DF": "后卫",
+    "GK": "门将",
+}
+
+INJURY_STATUS_ZH = {
+    "fit": "健康",
+    "minor": "轻伤",
+    "doubtful": "出战存疑",
+    "injured": "受伤",
+    "out": "缺阵",
+}
+
 COLUMN_LABELS_ZH = {
     "name": "球队",
     "team": "球队",
@@ -48,6 +86,8 @@ COLUMN_LABELS_ZH = {
     "player_name": "球员",
     "severity": "严重程度",
     "expected_return": "预计回归",
+    "score": "比分",
+    "probability_pct": "概率 %",
     "group_qualified": "小组出线 %",
     "round_32": "32强 %",
     "round_16": "16强 %",
@@ -103,7 +143,24 @@ def format_probability(value: float) -> str:
 
 
 def team_label(team: str) -> str:
+    if team.startswith("Qualifier "):
+        return f"资格赛球队 {team.split()[-1]}"
     return TEAM_NAME_ZH.get(team, team)
+
+
+def localize_values(df: pd.DataFrame) -> pd.DataFrame:
+    result = df.copy()
+    for column in ("team", "name"):
+        if column in result.columns:
+            result[column] = result[column].map(lambda value: team_label(str(value)) if pd.notna(value) else value)
+    for column in ("player_name", "name"):
+        if column in result.columns:
+            result[column] = result[column].map(lambda value: PLAYER_NAME_ZH.get(str(value), value) if pd.notna(value) else value)
+    if "position" in result.columns:
+        result["position"] = result["position"].map(lambda value: POSITION_ZH.get(str(value), value) if pd.notna(value) else value)
+    if "injury_status" in result.columns:
+        result["injury_status"] = result["injury_status"].map(lambda value: INJURY_STATUS_ZH.get(str(value), value) if pd.notna(value) else value)
+    return result
 
 
 def with_chinese_team_names(df: pd.DataFrame, column: str = "team") -> pd.DataFrame:
@@ -144,9 +201,9 @@ def single_match_page() -> None:
     score_df["probability_pct"] = score_df["probability"].map(lambda value: 100 * value)
     left, right = st.columns([1, 1])
     with left:
-        st.subheader("最可能比分 Top 10")
+        st.subheader("最可能比分前10")
         st.dataframe(
-            score_df[["score", "probability_pct"]].rename(columns={"score": "比分", "probability_pct": "概率 %"}),
+            rename_columns_zh(score_df[["score", "probability_pct"]]),
             use_container_width=True,
             hide_index=True,
         )
@@ -162,7 +219,7 @@ def single_match_page() -> None:
             text_auto=".2%",
             color_continuous_scale="Viridis",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def simulation_page() -> None:
@@ -174,9 +231,17 @@ def simulation_page() -> None:
     champion["夺冠概率"] = champion["champion"] * 100
     with col_a:
         st.subheader("夺冠概率排行榜")
-        fig = px.bar(champion, x="夺冠概率", y="team", orientation="h", color="夺冠概率", color_continuous_scale="Viridis")
+        fig = px.bar(
+            champion,
+            x="夺冠概率",
+            y="team",
+            orientation="h",
+            color="夺冠概率",
+            labels={"team": "球队"},
+            color_continuous_scale="Viridis",
+        )
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     advancement = result.head(16).copy()
     for col in ["group_qualified", "round_32", "round_16", "quarterfinal", "semifinal", "final", "champion"]:
         advancement[col] *= 100
@@ -195,8 +260,8 @@ def data_center_page() -> None:
     teams, players, injuries = data["teams"], data["players"], data["injuries"]
     tab_teams, tab_players, tab_injuries = st.tabs(["球队评分", "球员状态", "伤病情况"])
     with tab_teams:
-        st.dataframe(rename_columns_zh(with_chinese_team_names(teams.sort_values("overall_rating", ascending=False), "name")), use_container_width=True, hide_index=True)
-        chart_teams = with_chinese_team_names(teams, "name")
+        st.dataframe(rename_columns_zh(localize_values(teams.sort_values("overall_rating", ascending=False))), use_container_width=True, hide_index=True)
+        chart_teams = localize_values(teams)
         fig = px.scatter(
             chart_teams,
             x="attack_rating",
@@ -213,11 +278,11 @@ def data_center_page() -> None:
             },
             color_continuous_scale="RdYlGn",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     with tab_players:
-        st.dataframe(rename_columns_zh(with_chinese_team_names(players.sort_values(["team", "form_score"], ascending=[True, False]))), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(localize_values(players.sort_values(["team", "form_score"], ascending=[True, False]))), use_container_width=True, hide_index=True)
     with tab_injuries:
-        st.dataframe(rename_columns_zh(with_chinese_team_names(injuries)), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(localize_values(injuries)), use_container_width=True, hide_index=True)
 
 
 def main() -> None:
