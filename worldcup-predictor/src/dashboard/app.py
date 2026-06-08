@@ -102,7 +102,7 @@ PLAYER_COLUMN_LABELS_ZH = {**COLUMN_LABELS_ZH, "name": "球员", "team": "球队
 INJURY_COLUMN_LABELS_ZH = {**COLUMN_LABELS_ZH, "team": "球队"}
 
 
-st.set_page_config(page_title="2026世界杯预测系统", layout="wide")
+st.set_page_config(page_title="2026世界杯预测系统", layout="wide", initial_sidebar_state="expanded")
 
 
 st.markdown(
@@ -112,7 +112,6 @@ st.markdown(
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     #stDecoration {display: none !important;}
-    [data-testid="stToolbar"] {visibility: hidden !important;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -308,6 +307,7 @@ def data_center_page() -> None:
 
 def main() -> None:
     st.title("2026世界杯预测系统")
+    st.sidebar.title("功能选择")
     page = st.sidebar.radio("页面", ["单场预测", "世界杯模拟", "数据中心"])
     if page == "单场预测":
         single_match_page()
