@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from src.features.team_features import build_team_features
-from src.ingestion.data_sources import CsvSampleDataSource
+from src.ingestion.data_sources import CsvSampleDataSource, SQLiteDataSource
 from src.models.dixon_coles import DixonColesModel
 from src.models.elo import EloModel
 from src.models.ensemble import EnsembleModel
@@ -20,7 +20,8 @@ class MatchPredictor:
         odds: pd.DataFrame | None = None,
         injuries: pd.DataFrame | None = None,
     ):
-        source = CsvSampleDataSource(SAMPLE_DATA_DIR)
+        sqlite_source = SQLiteDataSource()
+        source = sqlite_source if sqlite_source.available else CsvSampleDataSource(SAMPLE_DATA_DIR)
         self.teams = teams if teams is not None else source.teams()
         self.players = players if players is not None else source.players()
         self.matches = matches if matches is not None else source.matches()
@@ -54,4 +55,3 @@ class MatchPredictor:
             "top_scores": self.poisson_model.top_scores(home_team, away_team, n=10),
             "score_matrix": score_matrix,
         }
-

@@ -10,6 +10,6 @@ env/
 *.db
 database/*.sqlite
 database/*.db
+data/raw/*
 data/processed/*.csv
 notebooks/.ipynb_checkpoints/
-

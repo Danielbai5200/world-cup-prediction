@@ -31,6 +31,15 @@ The MVP uses CSV sample data from `data/sample` and loads it into SQLite.
 python -m src.ingestion.daily_update
 ```
 
+The daily update now performs a no-key public Elo update:
+
+- Downloads current international-team Elo rankings from `international-football.net`, which labels the source as `eloratings.net`.
+- Saves raw HTML to `data/raw`.
+- Writes cleaned rankings to `data/processed/elo_ratings_latest.csv`.
+- Updates matching teams in SQLite.
+- The dashboard and predictor read SQLite by default when the database exists, so updated Elo values flow into predictions.
+- Keeps existing player and odds data when real providers are not configured.
+
 Future data-source adapters are reserved for:
 - World Football Elo Ratings
 - FBref
@@ -76,4 +85,3 @@ The current test target is focused on core correctness and runnability. Coverage
 ## Current Scope
 
 This is a runnable MVP with sample data for Argentina, France, England, Spain, Germany, Brazil, Portugal, Netherlands, Japan, and United States. It is structured for extension to Champions League, Euros, Premier League, La Liga, Bundesliga, Serie A, and Ligue 1.
-

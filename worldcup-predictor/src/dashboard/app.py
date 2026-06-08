@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ingestion.data_sources import CsvSampleDataSource
+from src.ingestion.data_sources import CsvSampleDataSource, SQLiteDataSource
 from src.models.predictor import MatchPredictor
 from src.simulation import WorldCupSimulator
 from src.utils.config import SAMPLE_DATA_DIR
@@ -132,7 +132,8 @@ def run_simulation(n_simulations: int) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def load_data() -> dict[str, pd.DataFrame]:
-    source = CsvSampleDataSource(SAMPLE_DATA_DIR)
+    sqlite_source = SQLiteDataSource()
+    source = sqlite_source if sqlite_source.available else CsvSampleDataSource(SAMPLE_DATA_DIR)
     return {
         "teams": source.teams(),
         "players": source.players(),

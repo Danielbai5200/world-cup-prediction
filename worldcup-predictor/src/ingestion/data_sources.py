@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.utils.config import SAMPLE_DATA_DIR
+from src.ingestion.database import get_engine
+from src.utils.config import DATABASE_PATH, SAMPLE_DATA_DIR
 
 
 class FootballDataSource(ABC):
@@ -41,6 +42,33 @@ class CsvSampleDataSource(FootballDataSource):
 
     def odds(self) -> pd.DataFrame:
         return pd.read_csv(self.data_dir / "odds.csv", parse_dates=["timestamp"])
+
+
+class SQLiteDataSource(FootballDataSource):
+    def __init__(self, database_path: Path = DATABASE_PATH):
+        self.database_path = database_path
+
+    @property
+    def available(self) -> bool:
+        return self.database_path.exists()
+
+    def teams(self) -> pd.DataFrame:
+        return self._read_table("teams")
+
+    def players(self) -> pd.DataFrame:
+        return self._read_table("players")
+
+    def matches(self) -> pd.DataFrame:
+        return self._read_table("matches")
+
+    def odds(self) -> pd.DataFrame:
+        return self._read_table("odds")
+
+    def _read_table(self, table: str) -> pd.DataFrame:
+        if not self.available:
+            raise FileNotFoundError(f"Database does not exist: {self.database_path}")
+        engine = get_engine(f"sqlite:///{self.database_path}")
+        return pd.read_sql_table(table, engine)
 
 
 class ExternalProviderStub(FootballDataSource):
@@ -80,4 +108,3 @@ class StatsBombSource(ExternalProviderStub):
 
 class OddsApiSource(ExternalProviderStub):
     provider_name = "Odds API"
-
