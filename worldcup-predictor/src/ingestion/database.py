@@ -33,6 +33,9 @@ def load_sample_data(engine: Engine | None = None, sample_dir: Path = SAMPLE_DAT
             conn.execute(text(f"DELETE FROM {table}"))
         for table, (filename, date_columns) in loaders.items():
             df = pd.read_csv(sample_dir / filename, parse_dates=date_columns)
+            for column in date_columns:
+                if column != "timestamp":
+                    df[column] = df[column].dt.date
             df.to_sql(table, conn, if_exists="append", index=False)
 
 
@@ -46,4 +49,3 @@ def initialize_database(database_path: Path = DATABASE_PATH) -> Path:
 def read_table(table: str, engine: Engine | None = None) -> pd.DataFrame:
     engine = engine or get_engine()
     return pd.read_sql_table(table, engine)
-

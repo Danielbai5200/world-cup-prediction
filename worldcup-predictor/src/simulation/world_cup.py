@@ -21,6 +21,8 @@ class WorldCupSimulator:
     def __init__(self, predictor: MatchPredictor | None = None, random_seed: int | None = 2026):
         self.predictor = predictor or MatchPredictor()
         self.rng = np.random.default_rng(random_seed)
+        self._probability_cache: dict[tuple[str, str], dict[str, float]] = {}
+        self._xg_cache: dict[tuple[str, str], tuple[float, float]] = {}
 
     def simulate(self, n_simulations: int = 100_000) -> pd.DataFrame:
         teams = self._expanded_teams()
@@ -135,17 +137,27 @@ class WorldCupSimulator:
         return SimulatedMatch(home_team, away_team, str(winner), loser, False)
 
     def _match_probabilities(self, home_team: str, away_team: str) -> dict[str, float]:
+        cache_key = (home_team, away_team)
+        if cache_key in self._probability_cache:
+            return self._probability_cache[cache_key]
         if home_team in self.predictor.team_names and away_team in self.predictor.team_names:
-            return self.predictor.predict_match(home_team, away_team)["probabilities"]  # type: ignore[return-value]
+            probabilities = self.predictor.predict_match(home_team, away_team)["probabilities"]  # type: ignore[assignment]
+            self._probability_cache[cache_key] = probabilities
+            return probabilities
         home_strength = self._team_strength(home_team)
         away_strength = self._team_strength(away_team)
         home_win = 1 / (1 + np.exp(-(home_strength - away_strength) / 10))
         draw = 0.22
-        return {"home_win": float(home_win * (1 - draw)), "draw": draw, "away_win": float((1 - home_win) * (1 - draw))}
+        probabilities = {"home_win": float(home_win * (1 - draw)), "draw": draw, "away_win": float((1 - home_win) * (1 - draw))}
+        self._probability_cache[cache_key] = probabilities
+        return probabilities
 
     def _sample_score(self, home_team: str, away_team: str) -> tuple[int, int]:
+        cache_key = (home_team, away_team)
         if home_team in self.predictor.team_names and away_team in self.predictor.team_names:
-            home_xg, away_xg = self.predictor.poisson_model.expected_goals(home_team, away_team)
+            if cache_key not in self._xg_cache:
+                self._xg_cache[cache_key] = self.predictor.poisson_model.expected_goals(home_team, away_team)
+            home_xg, away_xg = self._xg_cache[cache_key]
         else:
             home_xg = max(0.4, 1.25 + (self._team_strength(home_team) - self._team_strength(away_team)) / 55)
             away_xg = max(0.3, 1.10 + (self._team_strength(away_team) - self._team_strength(home_team)) / 60)
@@ -167,4 +179,3 @@ class WorldCupSimulator:
     def _increment(counters: dict[str, dict[str, int]], teams: list[str], stage: str) -> None:
         for team in teams:
             counters[team][stage] += 1
-

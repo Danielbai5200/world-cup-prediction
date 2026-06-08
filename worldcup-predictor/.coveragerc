@@ -1,0 +1,5 @@
+[run]
+omit =
+    src/dashboard/app.py
+    src/models/xgboost/*
+
