@@ -47,7 +47,7 @@ Source integration plan:
 - OneFootball squads: planned source for full national-team squad lists after team URL mappings are configured.
 - FBref team stats: planned source for attack/defense metrics after squad URL mappings are configured and request throttling is enabled.
 
-Team source mappings live in `data/config/team_source_mapping.csv`. The current version includes the 10 sample teams, with FBref URLs populated for all 10 and OneFootball URLs populated for all 10 through the OneFootball search API. Daily updates report mapping coverage so source drift can be detected.
+The 48-team World Cup list lives in `data/config/world_cup_2026_teams.csv`. Team source mappings live in `data/config/team_source_mapping.csv`. The current version includes all 48 qualified teams, with OneFootball URLs populated for all 48 through the OneFootball search API. FBref URLs are populated for the original 10 sample teams and are reported as coverage so the remaining teams can be filled safely without guessing. Daily updates report mapping coverage so source drift can be detected.
 
 Future data-source adapters are reserved for:
 - World Football Elo Ratings

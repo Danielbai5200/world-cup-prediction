@@ -6,7 +6,7 @@ from src.ingestion.data_sources import CsvSampleDataSource
 from src.ingestion.database import create_tables, load_sample_data, read_table
 from src.ingestion.daily_update import run_daily_update
 from src.ingestion.real_data_update import apply_elo_rankings, parse_elo_rankings, parse_fifa_ranking_metadata, update_elo_data
-from src.ingestion.source_mapping import discover_onefootball_team, load_team_source_mapping, validate_team_source_mapping
+from src.ingestion.source_mapping import discover_onefootball_team, load_team_source_mapping, load_world_cup_teams, validate_team_source_mapping
 
 
 def test_csv_sample_data_loads_required_entities() -> None:
@@ -93,6 +93,8 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
                 "fifa_name": "Argentina",
                 "fbref_squad_id": "f9fddd6e",
                 "fbref_slug": "Argentina",
+                "confederation": "CONMEBOL",
+                "world_cup_group": "C",
                 "fbref_stats_url": "https://fbref.com/en/squads/f9fddd6e/Argentina-Men-Stats",
                 "fbref_history_url": "https://fbref.com/en/squads/f9fddd6e/history/Argentina-Men-Stats-and-History",
                 "onefootball_url": "https://onefootball.com/en/team/argentina-55",
@@ -124,6 +126,7 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
     assert result["player_update"]["status"] == "skipped"
     assert result["odds_update"]["status"] == "skipped"
     assert result["source_mapping"]["fbref_urls"] == 1
+    assert result["source_mapping"]["missing_fbref"] == []
 
 
 def test_parse_fifa_ranking_metadata() -> None:
@@ -139,11 +142,18 @@ def test_parse_fifa_ranking_metadata() -> None:
 def test_team_source_mapping_covers_sample_teams() -> None:
     mapping = load_team_source_mapping()
     validation = validate_team_source_mapping(mapping)
-    assert validation.teams == 10
-    assert validation.fbref_urls == 10
-    assert validation.onefootball_urls == 10
-    assert {"Argentina", "France", "Brazil"}.issubset(set(mapping["team"]))
+    assert validation.teams == 48
+    assert validation.fbref_urls >= 10
+    assert validation.onefootball_urls == 48
+    assert {"Argentina", "France", "Brazil", "Uzbekistan"}.issubset(set(mapping["team"]))
     assert validation.missing_onefootball == []
+
+
+def test_world_cup_team_list_contains_48_teams() -> None:
+    teams = load_world_cup_teams()
+    assert len(teams) == 48
+    assert set(teams["group"]) == set("ABCDEFGHIJKL")
+    assert {"Canada", "Mexico", "United States"}.issubset(set(teams["team"]))
 
 
 def test_discover_onefootball_team_from_search_api(monkeypatch) -> None:

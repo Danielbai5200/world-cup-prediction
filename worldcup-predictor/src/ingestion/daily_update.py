@@ -43,6 +43,7 @@ def run_daily_update() -> dict[str, object]:
             "teams": mapping_status.teams,
             "fbref_urls": mapping_status.fbref_urls,
             "onefootball_urls": mapping_status.onefootball_urls,
+            "missing_fbref": mapping_status.missing_fbref,
             "missing_onefootball": mapping_status.missing_onefootball,
         },
     }

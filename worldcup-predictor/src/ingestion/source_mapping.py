@@ -15,6 +15,8 @@ ONEFOOTBALL_SEARCH_API_URL = "https://search-api.onefootball.com/v2/en/search"
 REQUIRED_COLUMNS = {
     "team",
     "fifa_name",
+    "confederation",
+    "world_cup_group",
     "fbref_squad_id",
     "fbref_slug",
     "fbref_stats_url",
@@ -83,3 +85,14 @@ def discover_onefootball_team(team: str, timeout: int = 20) -> dict[str, str] | 
                 "onefootball_status": "verified_search_api",
             }
     return None
+
+
+def load_world_cup_teams(path=CONFIG_DATA_DIR / "world_cup_2026_teams.csv") -> pd.DataFrame:
+    teams = pd.read_csv(path).fillna("")
+    expected_columns = {"team", "confederation", "group", "fifa_name", "status", "source"}
+    missing_columns = expected_columns - set(teams.columns)
+    if missing_columns:
+        raise ValueError(f"World Cup team list is missing columns: {sorted(missing_columns)}")
+    if len(teams) != 48:
+        raise ValueError(f"World Cup team list must contain 48 teams, found {len(teams)}")
+    return teams
