@@ -23,6 +23,9 @@ REQUIRED_COLUMNS = {
     "fbref_history_url",
     "onefootball_url",
     "onefootball_status",
+    "transfermarkt_slug",
+    "transfermarkt_team_id",
+    "transfermarkt_url",
 }
 
 
@@ -31,8 +34,10 @@ class MappingValidationResult:
     teams: int
     fbref_urls: int
     onefootball_urls: int
+    transfermarkt_urls: int
     missing_fbref: list[str]
     missing_onefootball: list[str]
+    missing_transfermarkt: list[str]
 
 
 def load_team_source_mapping(path=TEAM_SOURCE_MAPPING_PATH) -> pd.DataFrame:
@@ -50,12 +55,15 @@ def validate_team_source_mapping(mapping: pd.DataFrame | None = None) -> Mapping
     mapping = mapping if mapping is not None else load_team_source_mapping()
     missing_fbref = mapping.loc[mapping["fbref_stats_url"].eq(""), "team"].tolist()
     missing_onefootball = mapping.loc[mapping["onefootball_url"].eq(""), "team"].tolist()
+    missing_transfermarkt = mapping.loc[mapping["transfermarkt_url"].eq(""), "team"].tolist()
     return MappingValidationResult(
         teams=len(mapping),
         fbref_urls=int(mapping["fbref_stats_url"].ne("").sum()),
         onefootball_urls=int(mapping["onefootball_url"].ne("").sum()),
+        transfermarkt_urls=int(mapping["transfermarkt_url"].ne("").sum()),
         missing_fbref=missing_fbref,
         missing_onefootball=missing_onefootball,
+        missing_transfermarkt=missing_transfermarkt,
     )
 
 

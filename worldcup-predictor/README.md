@@ -31,30 +31,45 @@ The MVP uses CSV sample data from `data/sample` and loads it into SQLite.
 python -m src.ingestion.daily_update
 ```
 
-The daily update now performs a no-key public Elo update:
+The daily update now performs public Elo, Transfermarkt player/squad, and optional odds updates:
 
 - Checks FIFA's official men's ranking page for official ranking metadata, including last and next official update dates.
 - Downloads current international-team Elo rankings from `international-football.net`, which labels the source as `eloratings.net`.
 - Saves raw HTML to `data/raw`.
 - Writes cleaned rankings to `data/processed/elo_ratings_latest.csv`.
 - Updates matching teams in SQLite.
+- Reads all 48 Transfermarkt national-team URLs from `data/config/team_source_mapping.csv`.
+- Scrapes squad rows into `data/processed/transfermarkt_players_latest.csv` and updates the SQLite `players` table team by team.
+- If `ODDS_API_KEY` is set, downloads match winner/draw/winner odds from The Odds API and writes `data/processed/match_odds_latest.csv`.
+- If `POLYMARKET_SLUG` is set, downloads winner-market probabilities from Polymarket and writes `data/processed/winner_market_odds_latest.csv`.
 - The dashboard and predictor read SQLite by default when the database exists, so updated Elo values flow into predictions.
-- Keeps existing player and odds data when real providers are not configured.
+- Keeps existing odds data when real providers are not configured.
+
+Optional environment variables:
+
+```bash
+export ODDS_API_KEY="your-the-odds-api-key"
+export ODDS_API_SPORT_KEY="soccer_fifa_world_cup"
+export POLYMARKET_SLUG="fifa-world-cup-2026-winner"
+export TRANSFERMARKT_DELAY_SECONDS="3"
+export TRANSFERMARKT_MAX_TEAMS=""  # set a number for testing, empty means all mapped teams
+```
 
 Source integration plan:
 
 - FIFA official rankings: primary source for official ranking metadata and future ranking ingestion if FIFA exposes stable ranking rows.
 - OneFootball squads: planned source for full national-team squad lists after team URL mappings are configured.
 - FBref team stats: planned source for attack/defense metrics after squad URL mappings are configured and request throttling is enabled.
+- Transfermarkt squads: current source for squad snapshots, market value, and injury flags.
+- The Odds API: optional source for match-level odds.
+- Polymarket: optional source for outright winner-market probabilities.
 
-The 48-team World Cup list lives in `data/config/world_cup_2026_teams.csv`. Team source mappings live in `data/config/team_source_mapping.csv`. The current version includes all 48 qualified teams, with OneFootball URLs populated for all 48 through the OneFootball search API. FBref URLs are populated for the original 10 sample teams and are reported as coverage so the remaining teams can be filled safely without guessing. Daily updates report mapping coverage so source drift can be detected.
+The 48-team World Cup list lives in `data/config/world_cup_2026_teams.csv`. Team source mappings live in `data/config/team_source_mapping.csv`. The current version includes all 48 qualified teams, with OneFootball and Transfermarkt URLs populated for all 48. FBref URLs are populated for the original 10 sample teams and are reported as coverage so the remaining teams can be filled safely without guessing. Daily updates report mapping coverage so source drift can be detected.
 
 Future data-source adapters are reserved for:
 - World Football Elo Ratings
 - FBref
-- Transfermarkt
 - StatsBomb
-- Odds API
 
 Adapters are isolated in `src/ingestion`, so model code does not depend on a specific provider.
 

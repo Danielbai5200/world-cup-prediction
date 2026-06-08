@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 from src.ingestion.database import get_engine
+from src.ingestion.odds_sources import fetch_the_odds_api_match_odds
+from src.ingestion.transfermarkt import parse_transfermarkt_squad, fetch_transfermarkt_html
 from src.utils.config import DATABASE_PATH, SAMPLE_DATA_DIR
 
 
@@ -106,13 +108,47 @@ class OneFootballSource(ExternalProviderStub):
     provider_name = "OneFootball"
 
 
-class TransfermarktSource(ExternalProviderStub):
+class TransfermarktSource(FootballDataSource):
     provider_name = "Transfermarkt"
+
+    def __init__(self, team_urls: dict[str, str] | None = None):
+        self.team_urls = team_urls or {}
+
+    def teams(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def players(self) -> pd.DataFrame:
+        frames = []
+        for team, url in self.team_urls.items():
+            frames.append(parse_transfermarkt_squad(fetch_transfermarkt_html(url), team))
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    def matches(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def odds(self) -> pd.DataFrame:
+        return pd.DataFrame()
 
 
 class StatsBombSource(ExternalProviderStub):
     provider_name = "StatsBomb"
 
 
-class OddsApiSource(ExternalProviderStub):
+class OddsApiSource(FootballDataSource):
     provider_name = "Odds API"
+
+    def __init__(self, api_key: str, sport_key: str = "soccer_fifa_world_cup"):
+        self.api_key = api_key
+        self.sport_key = sport_key
+
+    def teams(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def players(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def matches(self) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    def odds(self) -> pd.DataFrame:
+        return fetch_the_odds_api_match_odds(self.api_key, self.sport_key)
