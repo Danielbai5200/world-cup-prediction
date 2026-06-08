@@ -33,12 +33,19 @@ python -m src.ingestion.daily_update
 
 The daily update now performs a no-key public Elo update:
 
+- Checks FIFA's official men's ranking page for official ranking metadata, including last and next official update dates.
 - Downloads current international-team Elo rankings from `international-football.net`, which labels the source as `eloratings.net`.
 - Saves raw HTML to `data/raw`.
 - Writes cleaned rankings to `data/processed/elo_ratings_latest.csv`.
 - Updates matching teams in SQLite.
 - The dashboard and predictor read SQLite by default when the database exists, so updated Elo values flow into predictions.
 - Keeps existing player and odds data when real providers are not configured.
+
+Source integration plan:
+
+- FIFA official rankings: primary source for official ranking metadata and future ranking ingestion if FIFA exposes stable ranking rows.
+- OneFootball squads: planned source for full national-team squad lists after team URL mappings are configured.
+- FBref team stats: planned source for attack/defense metrics after squad URL mappings are configured and request throttling is enabled.
 
 Future data-source adapters are reserved for:
 - World Football Elo Ratings

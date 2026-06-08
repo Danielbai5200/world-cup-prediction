@@ -5,7 +5,7 @@ import pandas as pd
 from src.ingestion.data_sources import CsvSampleDataSource
 from src.ingestion.database import create_tables, load_sample_data, read_table
 from src.ingestion.daily_update import run_daily_update
-from src.ingestion.real_data_update import apply_elo_rankings, parse_elo_rankings, update_elo_data
+from src.ingestion.real_data_update import apply_elo_rankings, parse_elo_rankings, parse_fifa_ranking_metadata, update_elo_data
 
 
 def test_csv_sample_data_loads_required_entities() -> None:
@@ -63,6 +63,11 @@ def test_update_elo_data_writes_raw_processed_and_database(tmp_path, monkeypatch
     <tr><th>2.</th><td><span class="opensans">Argentina</span></td><td><font>2114</font></td></tr>
     """
     monkeypatch.setattr(real_update, "fetch_text", lambda: html)
+    monkeypatch.setattr(
+        real_update,
+        "_safe_fetch_fifa_metadata",
+        lambda: {"fifa_last_official_update": "01 April 2026", "fifa_next_official_update": "11 June 2026"},
+    )
     monkeypatch.setattr(real_update, "RAW_DATA_DIR", tmp_path / "raw")
     monkeypatch.setattr(real_update, "PROCESSED_DATA_DIR", tmp_path / "processed")
     engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite'}", future=True)
@@ -71,6 +76,7 @@ def test_update_elo_data_writes_raw_processed_and_database(tmp_path, monkeypatch
     result = update_elo_data(engine)
     assert result.rows_downloaded == 2
     assert result.rows_updated == 2
+    assert result.metadata["fifa_last_official_update"] == "01 April 2026"
     assert result.raw_path.exists()
     assert result.processed_path.exists()
 
@@ -91,11 +97,23 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
                 "rows_updated": 1,
                 "raw_path": "raw.html",
                 "processed_path": "processed.csv",
+                "metadata": {"fifa_last_official_update": "01 April 2026"},
             },
         )(),
     )
     result = run_daily_update()
     assert result["status"] == "ok"
     assert result["team_update"]["rows_updated"] == 1
+    assert result["team_update"]["metadata"]["fifa_last_official_update"] == "01 April 2026"
     assert result["player_update"]["status"] == "skipped"
     assert result["odds_update"]["status"] == "skipped"
+
+
+def test_parse_fifa_ranking_metadata() -> None:
+    html = """
+    <div>Last official update:</div><span>01 April 2026</span>
+    <div>Next official update:</div><span>11 June 2026 (4 days)</span>
+    """
+    metadata = parse_fifa_ranking_metadata(html)
+    assert metadata["fifa_last_official_update"] == "01 April 2026"
+    assert metadata["fifa_next_official_update"] == "11 June 2026 (4 days)"

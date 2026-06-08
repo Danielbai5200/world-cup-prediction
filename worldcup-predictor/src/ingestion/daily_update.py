@@ -15,6 +15,7 @@ def update_team_data() -> dict[str, object]:
         "rows_updated": result.rows_updated,
         "raw_path": str(result.raw_path),
         "processed_path": str(result.processed_path),
+        "metadata": result.metadata,
     }
 
 

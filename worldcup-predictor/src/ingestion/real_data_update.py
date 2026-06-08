@@ -15,6 +15,9 @@ from src.utils.config import DATABASE_PATH, PROCESSED_DATA_DIR, RAW_DATA_DIR
 
 
 ELO_SOURCE_URL = "https://www.international-football.net/"
+FIFA_MENS_RANKING_URL = "https://inside.fifa.com/fifa-world-ranking/men"
+ONEFOOTBALL_TEAM_URL_TEMPLATE = "https://onefootball.com/en/team/{team_slug}-{team_id}"
+FBREF_TEAM_STATS_URL_TEMPLATE = "https://fbref.com/en/squads/{squad_id}/{team_slug}-Men-Stats"
 USER_AGENT = "WorldCupPredictor2026/1.0 (+local data updater)"
 
 
@@ -26,12 +29,32 @@ class UpdateResult:
     rows_downloaded: int
     rows_updated: int
     updated_at: str
+    metadata: dict[str, str]
 
 
 def fetch_text(url: str = ELO_SOURCE_URL, timeout: int = 30) -> str:
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
+
+
+def fetch_fifa_ranking_metadata() -> dict[str, str]:
+    html = fetch_text(FIFA_MENS_RANKING_URL)
+    return parse_fifa_ranking_metadata(html)
+
+
+def parse_fifa_ranking_metadata(html: str) -> dict[str, str]:
+    last_update = _first_match(r"Last official update:\s*</[^>]+>\s*<[^>]+>([^<]+)", html)
+    if not last_update:
+        last_update = _first_match(r"Last official update:\s*([^<]+)", html)
+    next_update = _first_match(r"Next official update:\s*</[^>]+>\s*<[^>]+>([^<]+)", html)
+    if not next_update:
+        next_update = _first_match(r"Next official update:\s*([^<]+)", html)
+    return {
+        "fifa_source": FIFA_MENS_RANKING_URL,
+        "fifa_last_official_update": _clean_html_text(last_update or ""),
+        "fifa_next_official_update": _clean_html_text(next_update or ""),
+    }
 
 
 def parse_elo_rankings(html: str) -> pd.DataFrame:
@@ -70,6 +93,7 @@ def update_elo_data(engine: Engine | None = None) -> UpdateResult:
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     fetched_at = datetime.now(timezone.utc)
+    fifa_metadata = _safe_fetch_fifa_metadata()
     html = fetch_text()
     raw_path = RAW_DATA_DIR / f"international_football_elo_{fetched_at:%Y%m%d}.html"
     raw_path.write_text(html, encoding="utf-8")
@@ -84,6 +108,7 @@ def update_elo_data(engine: Engine | None = None) -> UpdateResult:
         rows_downloaded=len(rankings),
         rows_updated=rows_updated,
         updated_at=fetched_at.isoformat(),
+        metadata=fifa_metadata,
     )
 
 
@@ -135,3 +160,25 @@ def _parse_published_date(html: str) -> date:
 def _clean_html_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("&amp;", "&")).strip()
 
+
+def _first_match(pattern: str, text: str) -> str | None:
+    match = re.search(pattern, text, re.S)
+    return match.group(1).strip() if match else None
+
+
+def _safe_fetch_fifa_metadata() -> dict[str, str]:
+    try:
+        return fetch_fifa_ranking_metadata()
+    except Exception as exc:  # pragma: no cover - defensive network fallback
+        return {
+            "fifa_source": FIFA_MENS_RANKING_URL,
+            "fifa_metadata_status": f"unavailable: {type(exc).__name__}",
+        }
+
+
+def provider_configuration_notes() -> dict[str, str]:
+    return {
+        "fifa_rankings": "FIFA 官方排名页用于官方更新时间校验；若官方 JSON 排名为空，排名值使用可解析公开源回退。",
+        "onefootball_squads": "OneFootball 球员名单需要每支球队的 team_slug/team_id 映射，并可能受动态渲染影响。",
+        "fbref_team_stats": "FBref 攻防数据需要每支球队的 squad_id/team_slug 映射，并建议控制请求频率。",
+    }

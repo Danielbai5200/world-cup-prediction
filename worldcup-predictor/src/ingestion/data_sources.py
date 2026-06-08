@@ -94,8 +94,16 @@ class WorldFootballEloSource(ExternalProviderStub):
     provider_name = "World Football Elo Ratings"
 
 
+class FIFAOfficialRankingsSource(ExternalProviderStub):
+    provider_name = "FIFA official rankings"
+
+
 class FBrefSource(ExternalProviderStub):
     provider_name = "FBref"
+
+
+class OneFootballSource(ExternalProviderStub):
+    provider_name = "OneFootball"
 
 
 class TransfermarktSource(ExternalProviderStub):
