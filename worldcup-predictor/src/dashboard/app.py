@@ -97,6 +97,10 @@ COLUMN_LABELS_ZH = {
     "champion": "夺冠 %",
 }
 
+TEAM_COLUMN_LABELS_ZH = {**COLUMN_LABELS_ZH, "name": "球队"}
+PLAYER_COLUMN_LABELS_ZH = {**COLUMN_LABELS_ZH, "name": "球员", "team": "球队"}
+INJURY_COLUMN_LABELS_ZH = {**COLUMN_LABELS_ZH, "team": "球队"}
+
 
 st.set_page_config(page_title="2026世界杯预测系统", layout="wide")
 
@@ -148,18 +152,34 @@ def team_label(team: str) -> str:
     return TEAM_NAME_ZH.get(team, team)
 
 
-def localize_values(df: pd.DataFrame) -> pd.DataFrame:
+def localize_team_values(df: pd.DataFrame) -> pd.DataFrame:
     result = df.copy()
-    for column in ("team", "name"):
-        if column in result.columns:
-            result[column] = result[column].map(lambda value: team_label(str(value)) if pd.notna(value) else value)
-    for column in ("player_name", "name"):
-        if column in result.columns:
-            result[column] = result[column].map(lambda value: PLAYER_NAME_ZH.get(str(value), value) if pd.notna(value) else value)
+    if "name" in result.columns:
+        result["name"] = result["name"].map(lambda value: team_label(str(value)) if pd.notna(value) else "")
+    if "team" in result.columns:
+        result["team"] = result["team"].map(lambda value: team_label(str(value)) if pd.notna(value) else "")
+    return result
+
+
+def localize_player_values(df: pd.DataFrame) -> pd.DataFrame:
+    result = localize_team_values(df)
+    if "name" in result.columns:
+        result["name"] = result["name"].map(lambda value: PLAYER_NAME_ZH.get(str(value), value) if pd.notna(value) else "")
     if "position" in result.columns:
-        result["position"] = result["position"].map(lambda value: POSITION_ZH.get(str(value), value) if pd.notna(value) else value)
+        result["position"] = result["position"].map(lambda value: POSITION_ZH.get(str(value), value) if pd.notna(value) else "")
     if "injury_status" in result.columns:
-        result["injury_status"] = result["injury_status"].map(lambda value: INJURY_STATUS_ZH.get(str(value), value) if pd.notna(value) else value)
+        result["injury_status"] = result["injury_status"].map(lambda value: INJURY_STATUS_ZH.get(str(value), value) if pd.notna(value) else "")
+    return result
+
+
+def localize_injury_values(df: pd.DataFrame) -> pd.DataFrame:
+    result = localize_team_values(df)
+    if "player_name" in result.columns:
+        result["player_name"] = result["player_name"].map(lambda value: PLAYER_NAME_ZH.get(str(value), value) if pd.notna(value) else "")
+    if "injury_status" in result.columns:
+        result["injury_status"] = result["injury_status"].map(lambda value: INJURY_STATUS_ZH.get(str(value), value) if pd.notna(value) else "")
+    if "expected_return" in result.columns:
+        result["expected_return"] = result["expected_return"].fillna("").astype(str).replace({"nan": ""})
     return result
 
 
@@ -172,8 +192,9 @@ def with_chinese_team_names(df: pd.DataFrame, column: str = "team") -> pd.DataFr
     return result
 
 
-def rename_columns_zh(df: pd.DataFrame) -> pd.DataFrame:
-    return df.rename(columns={column: COLUMN_LABELS_ZH.get(column, column) for column in df.columns})
+def rename_columns_zh(df: pd.DataFrame, labels: dict[str, str] | None = None) -> pd.DataFrame:
+    label_map = labels or COLUMN_LABELS_ZH
+    return df.rename(columns={column: label_map.get(column, column) for column in df.columns})
 
 
 def single_match_page() -> None:
@@ -260,8 +281,8 @@ def data_center_page() -> None:
     teams, players, injuries = data["teams"], data["players"], data["injuries"]
     tab_teams, tab_players, tab_injuries = st.tabs(["球队评分", "球员状态", "伤病情况"])
     with tab_teams:
-        st.dataframe(rename_columns_zh(localize_values(teams.sort_values("overall_rating", ascending=False))), use_container_width=True, hide_index=True)
-        chart_teams = localize_values(teams)
+        st.dataframe(rename_columns_zh(localize_team_values(teams.sort_values("overall_rating", ascending=False)), TEAM_COLUMN_LABELS_ZH), use_container_width=True, hide_index=True)
+        chart_teams = localize_team_values(teams)
         fig = px.scatter(
             chart_teams,
             x="attack_rating",
@@ -280,9 +301,9 @@ def data_center_page() -> None:
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     with tab_players:
-        st.dataframe(rename_columns_zh(localize_values(players.sort_values(["team", "form_score"], ascending=[True, False]))), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(localize_player_values(players.sort_values(["team", "form_score"], ascending=[True, False])), PLAYER_COLUMN_LABELS_ZH), use_container_width=True, hide_index=True)
     with tab_injuries:
-        st.dataframe(rename_columns_zh(localize_values(injuries)), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(localize_injury_values(injuries), INJURY_COLUMN_LABELS_ZH), use_container_width=True, hide_index=True)
 
 
 def main() -> None:
