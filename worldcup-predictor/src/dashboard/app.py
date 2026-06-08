@@ -61,6 +61,20 @@ COLUMN_LABELS_ZH = {
 st.set_page_config(page_title="2026世界杯预测系统", layout="wide")
 
 
+st.markdown(
+    """
+    <style>
+    .stDeployButton {display: none !important;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    #stDecoration {display: none !important;}
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 @st.cache_resource
 def get_predictor() -> MatchPredictor:
     return MatchPredictor()
