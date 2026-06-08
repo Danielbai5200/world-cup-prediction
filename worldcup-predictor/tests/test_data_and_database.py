@@ -6,6 +6,7 @@ from src.ingestion.data_sources import CsvSampleDataSource
 from src.ingestion.database import create_tables, load_sample_data, read_table
 from src.ingestion.daily_update import run_daily_update
 from src.ingestion.real_data_update import apply_elo_rankings, parse_elo_rankings, parse_fifa_ranking_metadata, update_elo_data
+from src.ingestion.source_mapping import load_team_source_mapping, validate_team_source_mapping
 
 
 def test_csv_sample_data_loads_required_entities() -> None:
@@ -85,6 +86,21 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
     import src.ingestion.daily_update as daily_update
 
     monkeypatch.setattr(daily_update, "initialize_database", lambda: None)
+    mapping = pd.DataFrame(
+        [
+            {
+                "team": "Argentina",
+                "fifa_name": "Argentina",
+                "fbref_squad_id": "f9fddd6e",
+                "fbref_slug": "Argentina",
+                "fbref_stats_url": "https://fbref.com/en/squads/f9fddd6e/Argentina-Men-Stats",
+                "fbref_history_url": "https://fbref.com/en/squads/f9fddd6e/history/Argentina-Men-Stats-and-History",
+                "onefootball_url": "https://onefootball.com/en/team/argentina-55",
+                "onefootball_status": "verified_http_200",
+            }
+        ]
+    )
+    monkeypatch.setattr(daily_update, "load_team_source_mapping", lambda: mapping)
     monkeypatch.setattr(
         daily_update,
         "update_elo_data",
@@ -107,6 +123,7 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
     assert result["team_update"]["metadata"]["fifa_last_official_update"] == "01 April 2026"
     assert result["player_update"]["status"] == "skipped"
     assert result["odds_update"]["status"] == "skipped"
+    assert result["source_mapping"]["fbref_urls"] == 1
 
 
 def test_parse_fifa_ranking_metadata() -> None:
@@ -117,3 +134,13 @@ def test_parse_fifa_ranking_metadata() -> None:
     metadata = parse_fifa_ranking_metadata(html)
     assert metadata["fifa_last_official_update"] == "01 April 2026"
     assert metadata["fifa_next_official_update"] == "11 June 2026 (4 days)"
+
+
+def test_team_source_mapping_covers_sample_teams() -> None:
+    mapping = load_team_source_mapping()
+    validation = validate_team_source_mapping(mapping)
+    assert validation.teams == 10
+    assert validation.fbref_urls == 10
+    assert validation.onefootball_urls >= 3
+    assert {"Argentina", "France", "Brazil"}.issubset(set(mapping["team"]))
+    assert "Spain" in validation.missing_onefootball

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from src.ingestion.database import initialize_database
 from src.ingestion.real_data_update import update_elo_data
+from src.ingestion.source_mapping import load_team_source_mapping, validate_team_source_mapping
 
 
 def update_team_data() -> dict[str, object]:
@@ -31,12 +32,19 @@ def run_daily_update() -> dict[str, object]:
     team_update = update_team_data()
     player_update = update_player_data()
     odds_update = update_odds_data()
+    mapping_status = validate_team_source_mapping(load_team_source_mapping())
     return {
         "status": "ok",
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "team_update": team_update,
         "player_update": player_update,
         "odds_update": odds_update,
+        "source_mapping": {
+            "teams": mapping_status.teams,
+            "fbref_urls": mapping_status.fbref_urls,
+            "onefootball_urls": mapping_status.onefootball_urls,
+            "missing_onefootball": mapping_status.missing_onefootball,
+        },
     }
 
 
