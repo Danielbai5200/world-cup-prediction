@@ -17,7 +17,48 @@ from src.simulation import WorldCupSimulator
 from src.utils.config import SAMPLE_DATA_DIR
 
 
-st.set_page_config(page_title="World Cup Predictor 2026", layout="wide")
+TEAM_NAME_ZH = {
+    "Argentina": "阿根廷",
+    "France": "法国",
+    "England": "英格兰",
+    "Spain": "西班牙",
+    "Germany": "德国",
+    "Brazil": "巴西",
+    "Portugal": "葡萄牙",
+    "Netherlands": "荷兰",
+    "Japan": "日本",
+    "United States": "美国",
+}
+
+COLUMN_LABELS_ZH = {
+    "name": "球队",
+    "team": "球队",
+    "fifa_rank": "FIFA排名",
+    "elo_rating": "Elo评分",
+    "market_value": "阵容身价",
+    "attack_rating": "进攻评分",
+    "defense_rating": "防守评分",
+    "overall_rating": "综合评分",
+    "updated_at": "更新时间",
+    "position": "位置",
+    "age": "年龄",
+    "form_score": "状态评分",
+    "fitness_score": "健康评分",
+    "injury_status": "伤病状态",
+    "player_name": "球员",
+    "severity": "严重程度",
+    "expected_return": "预计回归",
+    "group_qualified": "小组出线 %",
+    "round_32": "32强 %",
+    "round_16": "16强 %",
+    "quarterfinal": "8强 %",
+    "semifinal": "4强 %",
+    "final": "决赛 %",
+    "champion": "夺冠 %",
+}
+
+
+st.set_page_config(page_title="2026世界杯预测系统", layout="wide")
 
 
 @st.cache_resource
@@ -47,46 +88,63 @@ def format_probability(value: float) -> str:
     return f"{100 * value:.1f}%"
 
 
+def team_label(team: str) -> str:
+    return TEAM_NAME_ZH.get(team, team)
+
+
+def with_chinese_team_names(df: pd.DataFrame, column: str = "team") -> pd.DataFrame:
+    result = df.copy()
+    if column in result.columns:
+        result[column] = result[column].map(team_label)
+    if "name" in result.columns:
+        result["name"] = result["name"].map(team_label)
+    return result
+
+
+def rename_columns_zh(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(columns={column: COLUMN_LABELS_ZH.get(column, column) for column in df.columns})
+
+
 def single_match_page() -> None:
     predictor = get_predictor()
     teams = predictor.team_names
     col_home, col_away = st.columns(2)
     with col_home:
-        home_team = st.selectbox("Home Team", teams, index=teams.index("Argentina") if "Argentina" in teams else 0)
+        home_team = st.selectbox("主队", teams, index=teams.index("Argentina") if "Argentina" in teams else 0, format_func=team_label)
     with col_away:
         default_away = teams.index("France") if "France" in teams else min(1, len(teams) - 1)
-        away_team = st.selectbox("Away Team", teams, index=default_away)
+        away_team = st.selectbox("客队", teams, index=default_away, format_func=team_label)
     if home_team == away_team:
-        st.warning("Choose two different teams.")
+        st.warning("请选择两支不同球队。")
         return
     prediction = predictor.predict_match(home_team, away_team)
     probs = prediction["probabilities"]
     xg = prediction["expected_goals"]
     metrics = st.columns(5)
-    metrics[0].metric("Home Win", format_probability(probs["home_win"]))
-    metrics[1].metric("Draw", format_probability(probs["draw"]))
-    metrics[2].metric("Away Win", format_probability(probs["away_win"]))
-    metrics[3].metric("Home xG", f"{xg['home']:.2f}")
-    metrics[4].metric("Away xG", f"{xg['away']:.2f}")
+    metrics[0].metric("主胜概率", format_probability(probs["home_win"]))
+    metrics[1].metric("平局概率", format_probability(probs["draw"]))
+    metrics[2].metric("客胜概率", format_probability(probs["away_win"]))
+    metrics[3].metric("主队预期进球", f"{xg['home']:.2f}")
+    metrics[4].metric("客队预期进球", f"{xg['away']:.2f}")
     score_df = pd.DataFrame(prediction["top_scores"])
     score_df["probability_pct"] = score_df["probability"].map(lambda value: 100 * value)
     left, right = st.columns([1, 1])
     with left:
-        st.subheader("Top 10 Scorelines")
+        st.subheader("最可能比分 Top 10")
         st.dataframe(
-            score_df[["score", "probability_pct"]].rename(columns={"score": "Score", "probability_pct": "Probability %"}),
+            score_df[["score", "probability_pct"]].rename(columns={"score": "比分", "probability_pct": "概率 %"}),
             use_container_width=True,
             hide_index=True,
         )
     with right:
         matrix = prediction["score_matrix"]
-        heatmap_df = matrix.reset_index().melt(id_vars="index", var_name="Away Goals", value_name="Probability")
-        heatmap_df = heatmap_df.rename(columns={"index": "Home Goals"})
+        heatmap_df = matrix.reset_index().melt(id_vars="index", var_name="客队进球", value_name="概率")
+        heatmap_df = heatmap_df.rename(columns={"index": "主队进球"})
         fig = px.density_heatmap(
             heatmap_df,
-            x="Away Goals",
-            y="Home Goals",
-            z="Probability",
+            x="客队进球",
+            y="主队进球",
+            z="概率",
             text_auto=".2%",
             color_continuous_scale="Viridis",
         )
@@ -94,34 +152,25 @@ def single_match_page() -> None:
 
 
 def simulation_page() -> None:
-    n_simulations = st.slider("Simulations", min_value=1_000, max_value=100_000, value=10_000, step=1_000)
+    n_simulations = st.slider("模拟次数", min_value=1_000, max_value=100_000, value=10_000, step=1_000)
     result = run_simulation(n_simulations)
     col_a, col_b = st.columns(2)
     champion = result.head(12).copy()
-    champion["Champion Probability"] = champion["champion"] * 100
+    champion["team"] = champion["team"].map(team_label)
+    champion["夺冠概率"] = champion["champion"] * 100
     with col_a:
-        st.subheader("Champion Probability")
-        fig = px.bar(champion, x="Champion Probability", y="team", orientation="h", color="Champion Probability", color_continuous_scale="Viridis")
+        st.subheader("夺冠概率排行榜")
+        fig = px.bar(champion, x="夺冠概率", y="team", orientation="h", color="夺冠概率", color_continuous_scale="Viridis")
         fig.update_layout(yaxis={"categoryorder": "total ascending"})
         st.plotly_chart(fig, use_container_width=True)
     advancement = result.head(16).copy()
     for col in ["group_qualified", "round_32", "round_16", "quarterfinal", "semifinal", "final", "champion"]:
         advancement[col] *= 100
+    advancement = with_chinese_team_names(advancement)
     with col_b:
-        st.subheader("Advancement Rankings")
+        st.subheader("晋级概率排行榜")
         st.dataframe(
-            advancement.rename(
-                columns={
-                    "team": "Team",
-                    "group_qualified": "Group Qual %",
-                    "round_32": "Round 32 %",
-                    "round_16": "Round 16 %",
-                    "quarterfinal": "Quarterfinal %",
-                    "semifinal": "Semifinal %",
-                    "final": "Final %",
-                    "champion": "Champion %",
-                }
-            ),
+            rename_columns_zh(advancement),
             use_container_width=True,
             hide_index=True,
         )
@@ -130,31 +179,39 @@ def simulation_page() -> None:
 def data_center_page() -> None:
     data = load_data()
     teams, players, injuries = data["teams"], data["players"], data["injuries"]
-    tab_teams, tab_players, tab_injuries = st.tabs(["Teams", "Players", "Injuries"])
+    tab_teams, tab_players, tab_injuries = st.tabs(["球队评分", "球员状态", "伤病情况"])
     with tab_teams:
-        st.dataframe(teams.sort_values("overall_rating", ascending=False), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(with_chinese_team_names(teams.sort_values("overall_rating", ascending=False), "name")), use_container_width=True, hide_index=True)
+        chart_teams = with_chinese_team_names(teams, "name")
         fig = px.scatter(
-            teams,
+            chart_teams,
             x="attack_rating",
             y="defense_rating",
             size="market_value",
             color="overall_rating",
             hover_name="name",
+            labels={
+                "attack_rating": "进攻评分",
+                "defense_rating": "防守评分",
+                "market_value": "阵容身价",
+                "overall_rating": "综合评分",
+                "name": "球队",
+            },
             color_continuous_scale="RdYlGn",
         )
         st.plotly_chart(fig, use_container_width=True)
     with tab_players:
-        st.dataframe(players.sort_values(["team", "form_score"], ascending=[True, False]), use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(with_chinese_team_names(players.sort_values(["team", "form_score"], ascending=[True, False]))), use_container_width=True, hide_index=True)
     with tab_injuries:
-        st.dataframe(injuries, use_container_width=True, hide_index=True)
+        st.dataframe(rename_columns_zh(with_chinese_team_names(injuries)), use_container_width=True, hide_index=True)
 
 
 def main() -> None:
-    st.title("World Cup Predictor 2026")
-    page = st.sidebar.radio("Page", ["Single Match", "World Cup Simulation", "Data Center"])
-    if page == "Single Match":
+    st.title("2026世界杯预测系统")
+    page = st.sidebar.radio("页面", ["单场预测", "世界杯模拟", "数据中心"])
+    if page == "单场预测":
         single_match_page()
-    elif page == "World Cup Simulation":
+    elif page == "世界杯模拟":
         simulation_page()
     else:
         data_center_page()
