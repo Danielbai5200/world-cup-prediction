@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+.DS_Store
+*.db
+database/*.sqlite
+database/*.db
+data/processed/*.csv
+notebooks/.ipynb_checkpoints/
+
