@@ -47,7 +47,7 @@ Source integration plan:
 - OneFootball squads: planned source for full national-team squad lists after team URL mappings are configured.
 - FBref team stats: planned source for attack/defense metrics after squad URL mappings are configured and request throttling is enabled.
 
-Team source mappings live in `data/config/team_source_mapping.csv`. The first version includes the 10 sample teams, with FBref URLs populated for all 10 and OneFootball URLs populated only where verified. Daily updates report mapping coverage so missing OneFootball pages can be filled safely over time.
+Team source mappings live in `data/config/team_source_mapping.csv`. The current version includes the 10 sample teams, with FBref URLs populated for all 10 and OneFootball URLs populated for all 10 through the OneFootball search API. Daily updates report mapping coverage so source drift can be detected.
 
 Future data-source adapters are reserved for:
 - World Football Elo Ratings

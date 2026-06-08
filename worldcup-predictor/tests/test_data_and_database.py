@@ -6,7 +6,7 @@ from src.ingestion.data_sources import CsvSampleDataSource
 from src.ingestion.database import create_tables, load_sample_data, read_table
 from src.ingestion.daily_update import run_daily_update
 from src.ingestion.real_data_update import apply_elo_rankings, parse_elo_rankings, parse_fifa_ranking_metadata, update_elo_data
-from src.ingestion.source_mapping import load_team_source_mapping, validate_team_source_mapping
+from src.ingestion.source_mapping import discover_onefootball_team, load_team_source_mapping, validate_team_source_mapping
 
 
 def test_csv_sample_data_loads_required_entities() -> None:
@@ -141,6 +141,28 @@ def test_team_source_mapping_covers_sample_teams() -> None:
     validation = validate_team_source_mapping(mapping)
     assert validation.teams == 10
     assert validation.fbref_urls == 10
-    assert validation.onefootball_urls >= 3
+    assert validation.onefootball_urls == 10
     assert {"Argentina", "France", "Brazil"}.issubset(set(mapping["team"]))
-    assert "Spain" in validation.missing_onefootball
+    assert validation.missing_onefootball == []
+
+
+def test_discover_onefootball_team_from_search_api(monkeypatch) -> None:
+    import src.ingestion.source_mapping as source_mapping
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"teams":[{"id":61,"name":"England","is_national":true,"url":"/en/team/england-61"}]}'
+
+    monkeypatch.setattr(source_mapping, "urlopen", lambda request, timeout: Response())
+    result = discover_onefootball_team("England")
+    assert result is not None
+    assert result["onefootball_team_id"] == "61"
+    assert result["onefootball_url"] == "https://onefootball.com/en/team/england-61"

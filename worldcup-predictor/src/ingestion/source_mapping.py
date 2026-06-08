@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import pandas as pd
@@ -9,6 +11,7 @@ from src.utils.config import CONFIG_DATA_DIR
 
 
 TEAM_SOURCE_MAPPING_PATH = CONFIG_DATA_DIR / "team_source_mapping.csv"
+ONEFOOTBALL_SEARCH_API_URL = "https://search-api.onefootball.com/v2/en/search"
 REQUIRED_COLUMNS = {
     "team",
     "fifa_name",
@@ -61,3 +64,22 @@ def check_url_available(url: str, timeout: int = 10) -> bool:
     with urlopen(request, timeout=timeout) as response:
         return 200 <= response.status < 400
 
+
+def discover_onefootball_team(team: str, timeout: int = 20) -> dict[str, str] | None:
+    url = f"{ONEFOOTBALL_SEARCH_API_URL}?q={quote(team)}"
+    request = Request(url, headers={"User-Agent": "WorldCupPredictor2026/1.0", "Accept": "application/json"})
+    with urlopen(request, timeout=timeout) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    for item in data.get("teams", []):
+        if item.get("is_national") and item.get("name") == team and item.get("url"):
+            relative_url = item["url"]
+            slug_id = relative_url.rstrip("/").split("/")[-1]
+            slug, _, team_id = slug_id.rpartition("-")
+            return {
+                "team": team,
+                "onefootball_slug": slug,
+                "onefootball_team_id": str(item["id"] or team_id),
+                "onefootball_url": f"https://onefootball.com{relative_url}",
+                "onefootball_status": "verified_search_api",
+            }
+    return None
