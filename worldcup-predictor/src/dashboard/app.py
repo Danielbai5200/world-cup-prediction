@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from time import perf_counter
 from pathlib import Path
 
 import pandas as pd
@@ -247,14 +248,19 @@ def simulation_page() -> None:
     start = st.button("开始模拟", type="primary")
     if start:
         with st.spinner(f"正在运行 {n_simulations:,} 次世界杯模拟，请稍候..."):
+            started_at = perf_counter()
             st.session_state["simulation_result"] = run_simulation(n_simulations)
             st.session_state["simulation_count"] = n_simulations
-        st.success(f"模拟完成：共运行 {n_simulations:,} 次。")
+            st.session_state["simulation_elapsed"] = perf_counter() - started_at
+        st.success(f"模拟完成：共运行 {n_simulations:,} 次，用时 {st.session_state['simulation_elapsed']:.2f} 秒。")
     if "simulation_result" not in st.session_state:
         st.info("请选择模拟次数，然后点击“开始模拟”。模拟次数越高，结果越稳定，但等待时间也越长。")
         return
     result = st.session_state["simulation_result"]
-    st.caption(f"当前展示结果来自 {st.session_state.get('simulation_count', n_simulations):,} 次模拟。")
+    st.caption(
+        f"当前展示结果来自 {st.session_state.get('simulation_count', n_simulations):,} 次模拟，"
+        f"耗时 {st.session_state.get('simulation_elapsed', 0):.2f} 秒。"
+    )
     col_a, col_b = st.columns(2)
     champion = result.head(12).copy()
     champion["team"] = champion["team"].map(team_label)

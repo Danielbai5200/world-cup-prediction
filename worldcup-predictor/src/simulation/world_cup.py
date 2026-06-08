@@ -26,39 +26,102 @@ class WorldCupSimulator:
 
     def simulate(self, n_simulations: int = 100_000) -> pd.DataFrame:
         teams = self._expanded_teams()
-        counters = {
-            team: {
-                "group_qualified": 0,
-                "round_32": 0,
-                "round_16": 0,
-                "quarterfinal": 0,
-                "semifinal": 0,
-                "final": 0,
-                "champion": 0,
-            }
-            for team in teams
-        }
+        context = self._build_fast_context(teams)
+        counters = np.zeros((len(teams), 7), dtype=np.int64)
         for _ in range(n_simulations):
-            groups = self._make_groups(teams)
-            round_32 = self._simulate_group_stage(groups)
-            for team in round_32:
-                counters[team]["group_qualified"] += 1
-                counters[team]["round_32"] += 1
-            round_16 = self._simulate_knockout_round(round_32)
-            self._increment(counters, round_16, "round_16")
-            quarterfinal = self._simulate_knockout_round(round_16)
-            self._increment(counters, quarterfinal, "quarterfinal")
-            semifinal = self._simulate_knockout_round(quarterfinal)
-            self._increment(counters, semifinal, "semifinal")
-            finalists = self._simulate_knockout_round(semifinal)
-            self._increment(counters, finalists, "final")
-            champion = self._simulate_knockout_round(finalists)[0]
-            counters[champion]["champion"] += 1
-        rows = []
-        for team, values in counters.items():
-            rows.append({"team": team, **{key: value / n_simulations for key, value in values.items()}})
-        result = pd.DataFrame(rows).sort_values("champion", ascending=False).reset_index(drop=True)
-        return result
+            round_32 = self._simulate_group_stage_fast(context)
+            counters[round_32, 0] += 1
+            counters[round_32, 1] += 1
+            round_16 = self._simulate_knockout_round_fast(round_32, context)
+            counters[round_16, 2] += 1
+            quarterfinal = self._simulate_knockout_round_fast(round_16, context)
+            counters[quarterfinal, 3] += 1
+            semifinal = self._simulate_knockout_round_fast(quarterfinal, context)
+            counters[semifinal, 4] += 1
+            finalists = self._simulate_knockout_round_fast(semifinal, context)
+            counters[finalists, 5] += 1
+            champion = self._simulate_knockout_round_fast(finalists, context)[0]
+            counters[champion, 6] += 1
+        columns = ["group_qualified", "round_32", "round_16", "quarterfinal", "semifinal", "final", "champion"]
+        result = pd.DataFrame(counters / n_simulations, columns=columns)
+        result.insert(0, "team", teams)
+        return result.sort_values("champion", ascending=False).reset_index(drop=True)
+
+    def _build_fast_context(self, teams: list[str]) -> dict[str, np.ndarray]:
+        team_count = len(teams)
+        strengths = np.array([self._team_strength(team) for team in teams], dtype=float)
+        home_win = np.zeros((team_count, team_count), dtype=float)
+        draw = np.zeros((team_count, team_count), dtype=float)
+        home_xg = np.zeros((team_count, team_count), dtype=float)
+        away_xg = np.zeros((team_count, team_count), dtype=float)
+        known_teams = set(self.predictor.team_names)
+        for home_idx, home_team in enumerate(teams):
+            for away_idx, away_team in enumerate(teams):
+                if home_idx == away_idx:
+                    continue
+                if home_team in known_teams and away_team in known_teams:
+                    probabilities = self._match_probabilities(home_team, away_team)
+                    home_win[home_idx, away_idx] = probabilities["home_win"]
+                    draw[home_idx, away_idx] = probabilities["draw"]
+                    home_xg[home_idx, away_idx], away_xg[home_idx, away_idx] = self._sample_xg(home_team, away_team)
+                else:
+                    home_strength = strengths[home_idx]
+                    away_strength = strengths[away_idx]
+                    raw_home_win = 1 / (1 + np.exp(-(home_strength - away_strength) / 10))
+                    draw[home_idx, away_idx] = 0.22
+                    home_win[home_idx, away_idx] = raw_home_win * (1 - draw[home_idx, away_idx])
+                    home_xg[home_idx, away_idx] = max(0.4, 1.25 + (home_strength - away_strength) / 55)
+                    away_xg[home_idx, away_idx] = max(0.3, 1.10 + (away_strength - home_strength) / 60)
+        return {"strengths": strengths, "home_win": home_win, "draw": draw, "home_xg": home_xg, "away_xg": away_xg}
+
+    def _simulate_group_stage_fast(self, context: dict[str, np.ndarray]) -> np.ndarray:
+        shuffled = self.rng.permutation(48)
+        groups = shuffled.reshape(12, 4)
+        qualified: list[int] = []
+        third_place: list[tuple[int, int, int, int, float]] = []
+        for group in groups:
+            points = np.zeros(4, dtype=np.int16)
+            goals_for = np.zeros(4, dtype=np.int16)
+            goals_against = np.zeros(4, dtype=np.int16)
+            for home_pos in range(4):
+                for away_pos in range(home_pos + 1, 4):
+                    home_idx = int(group[home_pos])
+                    away_idx = int(group[away_pos])
+                    home_goals = int(min(self.rng.poisson(context["home_xg"][home_idx, away_idx]), 8))
+                    away_goals = int(min(self.rng.poisson(context["away_xg"][home_idx, away_idx]), 8))
+                    goals_for[home_pos] += home_goals
+                    goals_against[home_pos] += away_goals
+                    goals_for[away_pos] += away_goals
+                    goals_against[away_pos] += home_goals
+                    if home_goals > away_goals:
+                        points[home_pos] += 3
+                    elif away_goals > home_goals:
+                        points[away_pos] += 3
+                    else:
+                        points[home_pos] += 1
+                        points[away_pos] += 1
+            goal_diff = goals_for - goals_against
+            ranked_positions = sorted(
+                range(4),
+                key=lambda pos: (points[pos], goal_diff[pos], goals_for[pos], context["strengths"][group[pos]]),
+                reverse=True,
+            )
+            qualified.extend(int(group[pos]) for pos in ranked_positions[:2])
+            third_pos = ranked_positions[2]
+            third_idx = int(group[third_pos])
+            third_place.append((third_idx, int(points[third_pos]), int(goal_diff[third_pos]), int(goals_for[third_pos]), float(context["strengths"][third_idx])))
+        best_thirds = sorted(third_place, key=lambda row: (row[1], row[2], row[3], row[4]), reverse=True)[:8]
+        qualified.extend(team_idx for team_idx, *_ in best_thirds)
+        return self.rng.permutation(np.array(qualified, dtype=np.int16))
+
+    def _simulate_knockout_round_fast(self, team_indices: np.ndarray, context: dict[str, np.ndarray]) -> np.ndarray:
+        winners = np.empty(len(team_indices) // 2, dtype=np.int16)
+        for match_idx, idx in enumerate(range(0, len(team_indices), 2)):
+            home_idx = int(team_indices[idx])
+            away_idx = int(team_indices[idx + 1])
+            home_advances = context["home_win"][home_idx, away_idx] + 0.5 * context["draw"][home_idx, away_idx]
+            winners[match_idx] = home_idx if self.rng.random() < home_advances else away_idx
+        return winners
 
     def _expanded_teams(self) -> list[str]:
         base = self.predictor.team_names
@@ -153,6 +216,10 @@ class WorldCupSimulator:
         return probabilities
 
     def _sample_score(self, home_team: str, away_team: str) -> tuple[int, int]:
+        home_xg, away_xg = self._sample_xg(home_team, away_team)
+        return int(min(self.rng.poisson(home_xg), 8)), int(min(self.rng.poisson(away_xg), 8))
+
+    def _sample_xg(self, home_team: str, away_team: str) -> tuple[float, float]:
         cache_key = (home_team, away_team)
         if home_team in self.predictor.team_names and away_team in self.predictor.team_names:
             if cache_key not in self._xg_cache:
@@ -161,7 +228,7 @@ class WorldCupSimulator:
         else:
             home_xg = max(0.4, 1.25 + (self._team_strength(home_team) - self._team_strength(away_team)) / 55)
             away_xg = max(0.3, 1.10 + (self._team_strength(away_team) - self._team_strength(home_team)) / 60)
-        return int(min(self.rng.poisson(home_xg), 8)), int(min(self.rng.poisson(away_xg), 8))
+        return float(home_xg), float(away_xg)
 
     def _choose_by_strength(self, team_a: str, team_b: str) -> str:
         prob_a = 1 / (1 + np.exp(-(self._team_strength(team_a) - self._team_strength(team_b)) / 10))
