@@ -28,7 +28,8 @@ def update_team_data() -> dict[str, object]:
 def update_player_data() -> dict[str, object]:
     api_max_teams_env = os.getenv("API_FOOTBALL_MAX_TEAMS", "").strip()
     api_max_teams = int(api_max_teams_env) if api_max_teams_env else None
-    if api_football_configured():
+    api_enabled = api_football_configured()
+    if api_enabled:
         try:
             api_result = update_api_football_player_data(max_teams=api_max_teams)
         except Exception as exc:  # pragma: no cover - defensive network fallback
@@ -41,7 +42,7 @@ def update_player_data() -> dict[str, object]:
         if api_result is not None:
             api_failure = str(api_result.metadata.get("failures") or api_result.metadata)
     else:
-        api_failure = "API_FOOTBALL_KEY is not configured."
+        api_failure = ""
 
     max_teams_env = os.getenv("TRANSFERMARKT_MAX_TEAMS", "").strip()
     max_teams = int(max_teams_env) if max_teams_env else None
@@ -49,14 +50,16 @@ def update_player_data() -> dict[str, object]:
     try:
         result = update_transfermarkt_player_data(max_teams=max_teams, request_delay_seconds=delay)
     except Exception as exc:  # pragma: no cover - defensive network fallback
-        return {
+        failure = {
             "status": "failed",
             "source": "Transfermarkt",
-            "primary_source": "API-Football",
-            "primary_status": "failed",
-            "primary_reason": api_failure,
             "reason": f"{type(exc).__name__}: {exc}",
         }
+        if api_enabled:
+            failure["primary_source"] = "API-Football"
+            failure["primary_status"] = "failed"
+            failure["primary_reason"] = api_failure
+        return failure
     fallback = {
         "status": "ok" if result.rows_updated else "skipped",
         "source": result.source,
@@ -68,9 +71,10 @@ def update_player_data() -> dict[str, object]:
         "processed_path": str(result.processed_path),
         "metadata": result.metadata,
     }
-    fallback["primary_source"] = "API-Football"
-    fallback["primary_status"] = "failed" if api_football_configured() else "skipped"
-    fallback["primary_reason"] = api_failure
+    if api_enabled:
+        fallback["primary_source"] = "API-Football"
+        fallback["primary_status"] = "failed"
+        fallback["primary_reason"] = api_failure
     return fallback
 
 

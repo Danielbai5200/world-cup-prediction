@@ -12,7 +12,7 @@
 - 中文 Streamlit 仪表盘
 - 每日自动数据更新
 - FIFA / Elo / OneFootball / FBref / Transfermarkt 数据源映射
-- API-Football 球员名单和伤停主数据源
+- Transfermarkt 球员名单、身价和伤停数据源
 - 可选赔率接口：The Odds API / Polymarket
 
 ## 本地运行
@@ -41,7 +41,6 @@ python -m src.ingestion.daily_update
 
 - FIFA 官方排名更新时间校验
 - Elo 自动抓取并写入 SQLite
-- API-Football 球员名单、伤停数据接入，需配置 `API_FOOTBALL_KEY`
 - Transfermarkt 球员名单、身价、伤停标记抓取
 - The Odds API 单场赔率接入，需配置 `ODDS_API_KEY`
 - Polymarket 冠军市场接入，需配置 `POLYMARKET_SLUG`
