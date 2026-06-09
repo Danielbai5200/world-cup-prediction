@@ -31,15 +31,16 @@ The MVP uses CSV sample data from `data/sample` and loads it into SQLite.
 python -m src.ingestion.daily_update
 ```
 
-The daily update now performs public Elo, Transfermarkt player/squad, and optional odds updates:
+The daily update now performs public Elo, API-Football player/squad, Transfermarkt fallback, and optional odds updates:
 
 - Checks FIFA's official men's ranking page for official ranking metadata, including last and next official update dates.
 - Downloads current international-team Elo rankings from `international-football.net`, which labels the source as `eloratings.net`.
 - Saves raw HTML to `data/raw`.
 - Writes cleaned rankings to `data/processed/elo_ratings_latest.csv`.
 - Updates matching teams in SQLite.
+- If `API_FOOTBALL_KEY` is set, downloads squad and injury data from API-Football and updates the SQLite `players` table.
 - Reads all 48 Transfermarkt national-team URLs from `data/config/team_source_mapping.csv`.
-- Scrapes squad rows into `data/processed/transfermarkt_players_latest.csv` and updates the SQLite `players` table team by team.
+- Uses Transfermarkt as a fallback when API-Football is not configured or cannot return squad rows.
 - If `ODDS_API_KEY` is set, downloads match winner/draw/winner odds from The Odds API and writes `data/processed/match_odds_latest.csv`.
 - If `POLYMARKET_SLUG` is set, downloads winner-market probabilities from Polymarket and writes `data/processed/winner_market_odds_latest.csv`.
 - The dashboard and predictor read SQLite by default when the database exists, so updated Elo values flow into predictions.
@@ -49,6 +50,9 @@ Optional environment variables:
 
 ```bash
 export ODDS_API_KEY="your-the-odds-api-key"
+export API_FOOTBALL_KEY="your-api-football-key"
+export API_FOOTBALL_SEASON="2026"
+export API_FOOTBALL_MAX_TEAMS=""  # set a number for testing, empty means all mapped teams
 export ODDS_API_SPORT_KEY="soccer_fifa_world_cup"
 export POLYMARKET_SLUG="fifa-world-cup-2026-winner"
 export TRANSFERMARKT_DELAY_SECONDS="3"
@@ -58,6 +62,7 @@ export TRANSFERMARKT_MAX_TEAMS=""  # set a number for testing, empty means all m
 Source integration plan:
 
 - FIFA official rankings: primary source for official ranking metadata and future ranking ingestion if FIFA exposes stable ranking rows.
+- API-Football: primary source for squad and injury data when configured.
 - OneFootball squads: planned source for full national-team squad lists after team URL mappings are configured.
 - FBref team stats: planned source for attack/defense metrics after squad URL mappings are configured and request throttling is enabled.
 - Transfermarkt squads: current source for squad snapshots, market value, and injury flags.

@@ -5,6 +5,7 @@ import pandas as pd
 from src.ingestion.data_sources import CsvSampleDataSource
 from src.ingestion.database import create_tables, load_sample_data, read_table
 from src.ingestion.daily_update import run_daily_update
+from src.ingestion.api_football import parse_squad_response, update_api_football_player_data
 from src.ingestion.odds_sources import (
     apply_match_odds_snapshot,
     devig_probabilities,
@@ -115,6 +116,8 @@ def test_daily_update_reports_all_sections(monkeypatch) -> None:
         ]
     )
     monkeypatch.setattr(daily_update, "load_team_source_mapping", lambda: mapping)
+    monkeypatch.setattr(daily_update, "load_local_env", lambda: None)
+    monkeypatch.setattr(daily_update, "api_football_configured", lambda: False)
     monkeypatch.setattr(
         daily_update,
         "update_elo_data",
@@ -462,3 +465,108 @@ def test_update_transfermarkt_player_data_fetches_and_applies(tmp_path, monkeypa
     assert result.teams_updated == 1
     assert result.rows_updated == 1
     assert result.processed_path.exists()
+
+
+def test_parse_api_football_squad_response_marks_injuries() -> None:
+    squad = {
+        "response": [
+            {
+                "players": [
+                    {"id": 1, "name": "Lionel Messi", "age": 38, "position": "Attacker"},
+                    {"id": 2, "name": "Emiliano Martinez", "age": 33, "position": "Goalkeeper"},
+                ]
+            }
+        ]
+    }
+    injuries = {"response": [{"player": {"name": "Lionel Messi"}, "type": "Missing Fixture"}]}
+    players = parse_squad_response(squad, "Argentina", injuries)
+    assert len(players) == 2
+    assert players.loc[0, "position"] == "FW"
+    assert players.loc[0, "injury_status"] == "injured"
+    assert players.loc[1, "position"] == "GK"
+    assert players.loc[1, "injury_status"] == "fit"
+
+
+def test_update_api_football_player_data_fetches_and_applies(tmp_path, monkeypatch) -> None:
+    from sqlalchemy import create_engine
+    import src.ingestion.api_football as api_football
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite'}", future=True)
+    create_tables(engine)
+    load_sample_data(engine)
+    mapping = pd.DataFrame(
+        [
+            {
+                "team": "Argentina",
+                "api_football_team_id": "26",
+                "fifa_name": "Argentina",
+                "confederation": "CONMEBOL",
+                "world_cup_group": "C",
+                "fbref_squad_id": "",
+                "fbref_slug": "",
+                "fbref_stats_url": "",
+                "fbref_history_url": "",
+                "onefootball_url": "https://onefootball.com/en/team/argentina-55",
+                "onefootball_status": "verified_http_200",
+                "transfermarkt_slug": "argentinien",
+                "transfermarkt_team_id": "3437",
+                "transfermarkt_url": "https://www.transfermarkt.com/argentinien/startseite/verein/3437",
+            }
+        ]
+    )
+
+    def fake_fetch(endpoint, params=None, api_key=None):
+        if endpoint == "players/squads":
+            return {"response": [{"players": [{"id": 1, "name": "Lionel Messi", "age": 38, "position": "Attacker"}]}]}
+        if endpoint == "injuries":
+            return {"response": []}
+        raise AssertionError(endpoint)
+
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+    monkeypatch.setattr(api_football, "DATABASE_PATH", tmp_path / "test.sqlite")
+    monkeypatch.setattr(api_football, "RAW_DATA_DIR", tmp_path / "raw")
+    monkeypatch.setattr(api_football, "PROCESSED_DATA_DIR", tmp_path / "processed")
+    monkeypatch.setattr(api_football, "load_team_source_mapping", lambda: mapping)
+    monkeypatch.setattr(api_football, "fetch_api_football_json", fake_fetch)
+    result = update_api_football_player_data(engine)
+    assert result.teams_updated == 1
+    assert result.rows_updated == 1
+    assert result.processed_path.exists()
+
+
+def test_update_api_football_player_data_reports_provider_errors(tmp_path, monkeypatch) -> None:
+    from sqlalchemy import create_engine
+    import src.ingestion.api_football as api_football
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite'}", future=True)
+    create_tables(engine)
+    load_sample_data(engine)
+    mapping = pd.DataFrame(
+        [
+            {
+                "team": "Argentina",
+                "api_football_team_id": "",
+                "fifa_name": "Argentina",
+                "confederation": "CONMEBOL",
+                "world_cup_group": "C",
+                "fbref_squad_id": "",
+                "fbref_slug": "",
+                "fbref_stats_url": "",
+                "fbref_history_url": "",
+                "onefootball_url": "https://onefootball.com/en/team/argentina-55",
+                "onefootball_status": "verified_http_200",
+                "transfermarkt_slug": "argentinien",
+                "transfermarkt_team_id": "3437",
+                "transfermarkt_url": "https://www.transfermarkt.com/argentinien/startseite/verein/3437",
+            }
+        ]
+    )
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+    monkeypatch.setattr(api_football, "DATABASE_PATH", tmp_path / "test.sqlite")
+    monkeypatch.setattr(api_football, "RAW_DATA_DIR", tmp_path / "raw")
+    monkeypatch.setattr(api_football, "PROCESSED_DATA_DIR", tmp_path / "processed")
+    monkeypatch.setattr(api_football, "load_team_source_mapping", lambda: mapping)
+    monkeypatch.setattr(api_football, "discover_api_football_team_id", lambda team, api_key=None: (_ for _ in ()).throw(ValueError("bad key")))
+    result = update_api_football_player_data(engine)
+    assert result.rows_updated == 0
+    assert "bad key" in result.metadata["failures"]["Argentina"]
